@@ -140,6 +140,8 @@ python3 -m app.main --config config/settings.yaml --dry-run
 
 예상 로그 형식 예시는 아래와 같다.
 
+### Dry-run 예시
+
 ```text
 [2026-04-01 18:30:00] [INFO] ============================================================
 [2026-04-01 18:30:00] [INFO] OCI Daily AutoStop (Instance, DB Node, ADB)
@@ -176,6 +178,48 @@ python3 -m app.main --config config/settings.yaml --dry-run
 [2026-04-01 18:30:03] [INFO] ============================================================
 ```
 
+### 실제 stop 실행 예시 (`dry-run: false`)
+
+```text
+[2026-04-01 18:30:00] [INFO] ============================================================
+[2026-04-01 18:30:00] [INFO] OCI Daily AutoStop (Instance, DB Node, ADB)
+[2026-04-01 18:30:00] [INFO]  - Date               : 2026-04-01 18:30:00
+[2026-04-01 18:30:00] [INFO]  - Mode               : prod
+[2026-04-01 18:30:00] [INFO]  - Dry Run            : false
+[2026-04-01 18:30:00] [INFO]  - Target             : 49 compartment(s), 15 region(s)
+[2026-04-01 18:30:00] [INFO]  - Regions            : ap-seoul-1, ap-tokyo-1, us-chicago-1
+[2026-04-01 18:30:00] [INFO] ============================================================
+[2026-04-01 18:30:00] [INFO] OCI Daily AutoStop starting...
+[2026-04-01 18:30:00] [INFO] -> Compartment: PROD_APP
+[2026-04-01 18:30:01] [INFO]   [Instance] app-vm-01 (ap-seoul-1) -> Stop request sent
+[2026-04-01 18:30:01] [INFO]   [Instance] app-vm-02 (ap-tokyo-1) -> Already stopped (no action)
+[2026-04-01 18:30:02] [INFO] -> Compartment: PROD_DB
+[2026-04-01 18:30:03] [INFO]   [DB Node] dbnode-01 (ap-seoul-1) -> Stop request sent
+[2026-04-01 18:30:03] [INFO]   [ADB] adb-01 (ap-seoul-1) -> Stop request sent
+[2026-04-01 18:30:03] [INFO] ============================================================
+[2026-04-01 18:30:03] [INFO] Stop requests completed (1 Instance(s), 1 DB Node(s), 1 ADB(s)).
+[2026-04-01 18:30:03] [INFO] ============================================================
+[2026-04-01 18:30:03] [INFO] OCI Daily AutoStop verifying stop requests...
+[2026-04-01 18:30:03] [INFO] Checking final status for requested resources in 60 seconds...
+[2026-04-01 18:31:03] [WARNING] Resource not yet fully stopped at verification time. type=db_node name=dbnode-01 region=ap-seoul-1 state=STOPPING
+[2026-04-01 18:31:03] [INFO] ============================================================
+[2026-04-01 18:31:03] [INFO] Summary Details
+[2026-04-01 18:31:03] [INFO]  Instances scanned : 12
+[2026-04-01 18:31:03] [INFO]   ├─ Already stopped : 11
+[2026-04-01 18:31:03] [INFO]   ├─ In transition   : 0
+[2026-04-01 18:31:03] [INFO]   └─ Stop by AutoStop : 1 → 1 successful
+[2026-04-01 18:31:03] [INFO]  DB Nodes scanned : 3
+[2026-04-01 18:31:03] [INFO]   ├─ Already stopped : 2
+[2026-04-01 18:31:03] [INFO]   ├─ In transition   : 0
+[2026-04-01 18:31:03] [INFO]   └─ Stop by AutoStop : 1 → 0 successful
+[2026-04-01 18:31:03] [INFO]  ADBs scanned : 1
+[2026-04-01 18:31:03] [INFO]   ├─ Already stopped : 0
+[2026-04-01 18:31:03] [INFO]   ├─ In transition   : 0
+[2026-04-01 18:31:03] [INFO]   └─ Stop by AutoStop : 1 → 1 successful
+[2026-04-01 18:31:03] [INFO] AutoStop completed (total duration: 1m 3s)
+[2026-04-01 18:31:03] [INFO] ============================================================
+```
+
 ## 테스트
 
 문법 검사:
@@ -195,6 +239,7 @@ python3 -m unittest discover -s tests -v
 - 최초 운영은 `dev` + `default_dry_run: true` 로 시작하는 편이 안전하다.
 - `prod + --dry-run`으로 exception subtree와 로그 구조를 먼저 검증하는 것을 권장한다.
 - `execution.max_workers`는 기본적으로 보수적으로 유지하고, throttling 로그가 없을 때만 단계적으로 올리는 편이 좋다.
+- `execution.post_check_delay_seconds`는 DB Node/ADB가 stop 완료까지 오래 걸릴 수 있다는 점을 고려해 운영 환경에 맞게 조정한다.
 - prod에서 region discovery가 실패하면 `oci.regions` 값을 fallback으로 사용한다.
 - 운영상 제외가 필요한 region은 `oci.excluded_regions` 에 명시한다.
-- 현재 로그는 `logs/autostop_daily.log` 한 파일에 덮어쓰기 방식으로 기록된다.
+- 현재 로그는 `logs/autostop_daily.log` 와 `logs/cron_stdout.log` 를 하루 단위 덮어쓰기 방식으로 관리하는 운영을 권장한다.
