@@ -4,6 +4,7 @@ oci:
   tenancy_ocid: null
   regions:
     - ap-seoul-1
+  excluded_regions: []
 
 scope:
   mode: dev
