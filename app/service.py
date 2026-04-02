@@ -30,6 +30,13 @@ class RegionJobResult:
     error: str | None = None
 
 
+@dataclass
+class VerificationJobResult:
+    region: str
+    results: list[tuple[ResourceRecord, bool, str]] = field(default_factory=list)
+    error: str | None = None
+
+
 class BufferedWorkerLogger:
     def __init__(self) -> None:
         self.records: list[BufferedLogRecord] = []
@@ -231,63 +238,105 @@ def _verify_requested_stops(
         return
 
     delay_seconds = settings.execution.post_check_delay_seconds
+    _log_multiline(logger, "=" * 60)
+    logger.info("OCI Daily AutoStop verifying stop requests...")
     logger.info("Checking final status for requested resources in %s seconds...", delay_seconds)
     if delay_seconds > 0:
         time.sleep(delay_seconds)
 
+    region_groups: dict[str, list[ResourceRecord]] = {}
     for result in requested:
-        confirmed_stopped, current_state = _check_resource_stopped(result.resource, settings, oci_config, logger)
-        summary.register_verification(result.resource.resource_type, confirmed_stopped)
-        if not confirmed_stopped:
-            logger.warning(
-                "Resource still not fully stopped. type=%s name=%s region=%s state=%s",
-                result.resource.resource_type,
-                result.resource.resource_name,
-                result.resource.region,
-                current_state,
-            )
+        region_groups.setdefault(result.resource.region, []).append(result.resource)
+
+    verification_jobs = _run_verification_jobs(region_groups, settings, oci_config)
+    for job in verification_jobs:
+        if job.error:
+            summary.add_error(f"verification/{job.region}: {job.error}")
+            logger.error("Verification job failed. region=%s error=%s", job.region, job.error)
+            for resource in region_groups.get(job.region, []):
+                summary.register_verification(resource.resource_type, False)
+            continue
+
+        for resource, confirmed_stopped, current_state in job.results:
+            summary.register_verification(resource.resource_type, confirmed_stopped)
+            if not confirmed_stopped:
+                logger.warning(
+                    "Resource not yet fully stopped at verification time. type=%s name=%s region=%s state=%s",
+                    resource.resource_type,
+                    resource.resource_name,
+                    resource.region,
+                    current_state,
+                )
+
+
+def _run_verification_jobs(
+    region_groups: dict[str, list[ResourceRecord]],
+    settings: AppSettings,
+    oci_config: dict[str, str],
+) -> list[VerificationJobResult]:
+    regions = list(region_groups)
+    if len(regions) <= 1 or settings.execution.post_check_max_workers <= 1:
+        return [_verify_region_requested_stops(region, region_groups[region], settings, oci_config) for region in regions]
+
+    max_workers = min(settings.execution.post_check_max_workers, len(regions))
+    futures = {}
+    ordered_results: dict[str, VerificationJobResult] = {}
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        for region in regions:
+            futures[region] = executor.submit(_verify_region_requested_stops, region, region_groups[region], settings, oci_config)
+        for region, future in futures.items():
+            ordered_results[region] = future.result()
+    return [ordered_results[region] for region in regions]
+
+
+def _verify_region_requested_stops(
+    region: str,
+    resources: list[ResourceRecord],
+    settings: AppSettings,
+    oci_config: dict[str, str],
+) -> VerificationJobResult:
+    logger = logging.getLogger("app.service")
+    try:
+        clients = build_clients(oci_config, region)
+        results = [_check_resource_stopped(resource, clients, settings, logger) for resource in resources]
+        return VerificationJobResult(region=region, results=results)
+    except Exception as exc:  # pragma: no cover
+        return VerificationJobResult(region=region, error=str(exc))
 
 
 def _check_resource_stopped(
     resource: ResourceRecord,
+    clients,
     settings: AppSettings,
-    oci_config: dict[str, str],
     logger: logging.Logger,
-) -> tuple[bool, str]:
-    clients = build_clients(oci_config, resource.region)
+) -> tuple[ResourceRecord, bool, str]:
     state = "UNKNOWN"
 
-    try:
-        if resource.resource_type == "compute":
-            state = call_with_retry(
-                lambda: clients.compute.get_instance(resource.resource_id).data.lifecycle_state,
-                settings.retry,
-                logger,
-                f"get_instance:{resource.resource_id}",
-            )
-            return (state or "").upper() == "STOPPED", (state or "UNKNOWN").upper()
-
-        if resource.resource_type == "db_node":
-            state = call_with_retry(
-                lambda: clients.database.get_db_node(resource.resource_id).data.lifecycle_state,
-                settings.retry,
-                logger,
-                f"get_db_node:{resource.resource_id}",
-            )
-            return (state or "").upper() == "STOPPED", (state or "UNKNOWN").upper()
-
+    if resource.resource_type == "compute":
         state = call_with_retry(
-            lambda: clients.database.get_autonomous_database(resource.resource_id).data.lifecycle_state,
+            lambda: clients.compute.get_instance(resource.resource_id).data.lifecycle_state,
             settings.retry,
             logger,
-            f"get_adb:{resource.resource_id}",
+            f"get_instance:{resource.resource_id}",
         )
         normalized_state = (state or "UNKNOWN").upper()
-        return normalized_state in {"STOPPED", "UNAVAILABLE"}, normalized_state
-    except Exception as exc:  # pragma: no cover
-        summary_error = (
-            f"verification failed for {resource.resource_type}:{resource.resource_name}"
-            f" ({resource.region}): {exc}"
+        return resource, normalized_state == "STOPPED", normalized_state
+
+    if resource.resource_type == "db_node":
+        state = call_with_retry(
+            lambda: clients.database.get_db_node(resource.resource_id).data.lifecycle_state,
+            settings.retry,
+            logger,
+            f"get_db_node:{resource.resource_id}",
         )
-        logger.error(summary_error)
-        return False, "ERROR"
+        normalized_state = (state or "UNKNOWN").upper()
+        return resource, normalized_state == "STOPPED", normalized_state
+
+    state = call_with_retry(
+        lambda: clients.database.get_autonomous_database(resource.resource_id).data.lifecycle_state,
+        settings.retry,
+        logger,
+        f"get_adb:{resource.resource_id}",
+    )
+    normalized_state = (state or "UNKNOWN").upper()
+    return resource, normalized_state in {"STOPPED", "UNAVAILABLE"}, normalized_state

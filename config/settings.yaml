@@ -29,7 +29,8 @@ scope:
 execution:
   default_dry_run: false
   max_workers: 4
-  post_check_delay_seconds: 10
+  post_check_delay_seconds: 60
+  post_check_max_workers: 4
   stop_wait_timeout_seconds: 900
   stop_wait_interval_seconds: 20
 

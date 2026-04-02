@@ -29,6 +29,7 @@ def _settings(max_workers: int = 4) -> AppSettings:
             default_dry_run=True,
             max_workers=max_workers,
             post_check_delay_seconds=10,
+            post_check_max_workers=2,
             stop_wait_timeout_seconds=900,
             stop_wait_interval_seconds=20,
         ),
@@ -161,6 +162,30 @@ class ServiceTest(unittest.TestCase):
         self.assertEqual(summary.verification["compute"].requested, 1)
         self.assertEqual(summary.verification["compute"].confirmed_stopped, 1)
         self.assertEqual(summary.success, 1)
+
+    @patch("app.service.ThreadPoolExecutor")
+    @patch("app.service._verify_region_requested_stops")
+    def test_run_verification_jobs_uses_configured_post_check_workers(self, verify_region_mock, executor_cls_mock) -> None:
+        from app.service import _run_verification_jobs, VerificationJobResult
+
+        settings = _settings(max_workers=1)
+        region_groups = {
+            "ap-seoul-1": [_resource("ap-seoul-1")],
+            "ap-tokyo-1": [_resource("ap-tokyo-1")],
+        }
+
+        future_seoul = MagicMock()
+        future_seoul.result.return_value = VerificationJobResult(region="ap-seoul-1")
+        future_tokyo = MagicMock()
+        future_tokyo.result.return_value = VerificationJobResult(region="ap-tokyo-1")
+        executor_mock = MagicMock()
+        executor_mock.submit.side_effect = [future_seoul, future_tokyo]
+        executor_cls_mock.return_value.__enter__.return_value = executor_mock
+
+        results = _run_verification_jobs(region_groups, settings, {"region": "ap-seoul-1"})
+
+        executor_cls_mock.assert_called_once_with(max_workers=2)
+        self.assertEqual([result.region for result in results], ["ap-seoul-1", "ap-tokyo-1"])
 
 
 class _ListHandler(logging.Handler):
