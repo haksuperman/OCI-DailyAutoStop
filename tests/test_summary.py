@@ -4,7 +4,7 @@ import unittest
 from datetime import datetime
 
 from app.models import ActionResult, ResourceRecord, Summary
-from app.reporting import build_summary_lines
+from app.reporting import build_completion_lines, build_summary_lines
 
 
 def _resource() -> ResourceRecord:
@@ -76,6 +76,33 @@ class SummaryTest(unittest.TestCase):
         self.assertIn("  ├─ Already stopped : 1", rendered)
         self.assertIn("  └─ Stop targets (Dry-run) : 1", rendered)
         self.assertIn("Dry-run completed (total duration: 5m 33s)", rendered)
+
+    def test_build_completion_lines_renders_stop_request_counts(self) -> None:
+        rendered = "\n".join(
+            build_completion_lines(
+                [
+                    ActionResult(_resource(), "requested", "Stop confirmed: STOPPED"),
+                    ActionResult(_resource(), "failed", "error"),
+                ],
+                False,
+            )
+        )
+
+        self.assertIn("============================================================", rendered)
+        self.assertIn("Stop requests completed (1 Instance(s), 0 DB Node(s), 0 ADB(s)).", rendered)
+
+    def test_build_completion_lines_renders_dry_run_counts(self) -> None:
+        rendered = "\n".join(
+            build_completion_lines(
+                [
+                    ActionResult(_resource(), "dry_run", "Dry-run stop request prepared"),
+                    ActionResult(_resource(), "already_stopped", "Already stopped: STOPPED"),
+                ],
+                True,
+            )
+        )
+
+        self.assertIn("Dry-run analysis completed (1 Instance(s), 0 DB Node(s), 0 ADB(s) matched).", rendered)
 
 
 if __name__ == "__main__":

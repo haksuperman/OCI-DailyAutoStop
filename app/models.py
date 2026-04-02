@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import datetime
 from typing import Literal
 
 
@@ -42,7 +43,12 @@ class Summary:
     success: int = 0
     failed: int = 0
     dry_run: int = 0
+    notes: list[str] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)
+    started_at: datetime | None = None
+    completed_at: datetime | None = None
+    target_compartment_count: int = 0
+    target_region_count: int = 0
 
     def register(self, result: ActionResult) -> None:
         self.scanned += 1
@@ -61,6 +67,9 @@ class Summary:
         elif result.status == "failed":
             self.failed += 1
 
+    def add_note(self, message: str) -> None:
+        self.notes.append(message)
+
     def add_error(self, message: str) -> None:
         self.errors.append(message)
 
@@ -75,6 +84,9 @@ class Summary:
             f"- dry_run: {self.dry_run}",
             f"- failed: {self.failed}",
         ]
+        if self.notes:
+            lines.append("- notes:")
+            lines.extend(f"  * {note}" for note in self.notes)
         if self.errors:
             lines.append("- errors:")
             lines.extend(f"  * {error}" for error in self.errors)

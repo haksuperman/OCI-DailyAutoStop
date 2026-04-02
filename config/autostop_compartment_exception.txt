@@ -13,3 +13,9 @@
 
 # sample-compartment
 <EXCEPTION_COMPARTMENT_OCID_2>
+
+# dev-base/dev-base-SubComp3
+<EXCEPTION_COMPARTMENT_OCID_3>
+
+# sample-monitoring
+<EXCEPTION_COMPARTMENT_OCID_4>

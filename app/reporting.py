@@ -4,6 +4,31 @@ from collections import Counter
 from datetime import datetime
 from app.models import ActionResult, ResourceType, Summary
 
+def build_completion_lines(
+    results: list[ActionResult],
+    dry_run: bool,
+) -> list[str]:
+    counts = _build_type_counts(results)
+    if dry_run:
+        message = (
+            "Dry-run analysis completed "
+            f"({counts['compute']['dry_run']} Instance(s), "
+            f"{counts['db_node']['dry_run']} DB Node(s), "
+            f"{counts['adb']['dry_run']} ADB(s) matched)."
+        )
+    else:
+        message = (
+            "Stop requests completed "
+            f"({counts['compute']['requested']} Instance(s), "
+            f"{counts['db_node']['requested']} DB Node(s), "
+            f"{counts['adb']['requested']} ADB(s))."
+        )
+    return [
+        "=" * 60,
+        message,
+    ]
+
+
 def build_summary_lines(
     mode: str,
     summary: Summary,
