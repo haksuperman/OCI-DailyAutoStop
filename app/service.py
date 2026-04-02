@@ -4,12 +4,14 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from datetime import datetime
 import logging
+import time
 import traceback
 
 from app.compartments import build_target_compartments
 from app.config import AppSettings
-from app.models import ActionResult, Summary
+from app.models import ActionResult, ResourceRecord, Summary
 from app.oci_clients import build_clients
+from app.retry import call_with_retry
 from app.resources import process_compartment_resources
 from app.reporting import build_completion_lines, build_summary_lines
 
@@ -111,6 +113,9 @@ def run_autostop(
     summary.completed_at = datetime.now()
     for line in build_completion_lines(results, dry_run):
         _log_multiline(logger, line)
+    if not dry_run:
+        _verify_requested_stops(summary, results, settings, oci_config, logger)
+        summary.completed_at = datetime.now()
     for line in build_summary_lines(settings.scope.mode, summary, results, dry_run, regions):
         _log_multiline(logger, line)
     return summary, results
@@ -212,3 +217,77 @@ def _format_action_result(result: ActionResult, dry_run: bool) -> str:
     if result.status == "transition" and result.message:
         message = f"In transition ({result.message.removeprefix('Transition state: ')})"
     return f"[{resource_labels[result.resource.resource_type]}] {result.resource.resource_name} ({result.resource.region}) -> {message}"
+
+
+def _verify_requested_stops(
+    summary: Summary,
+    results: list[ActionResult],
+    settings: AppSettings,
+    oci_config: dict[str, str],
+    logger: logging.Logger,
+) -> None:
+    requested = [result for result in results if result.status == "requested"]
+    if not requested:
+        return
+
+    delay_seconds = settings.execution.post_check_delay_seconds
+    logger.info("Checking final status for requested resources in %s seconds...", delay_seconds)
+    if delay_seconds > 0:
+        time.sleep(delay_seconds)
+
+    for result in requested:
+        confirmed_stopped, current_state = _check_resource_stopped(result.resource, settings, oci_config, logger)
+        summary.register_verification(result.resource.resource_type, confirmed_stopped)
+        if not confirmed_stopped:
+            logger.warning(
+                "Resource still not fully stopped. type=%s name=%s region=%s state=%s",
+                result.resource.resource_type,
+                result.resource.resource_name,
+                result.resource.region,
+                current_state,
+            )
+
+
+def _check_resource_stopped(
+    resource: ResourceRecord,
+    settings: AppSettings,
+    oci_config: dict[str, str],
+    logger: logging.Logger,
+) -> tuple[bool, str]:
+    clients = build_clients(oci_config, resource.region)
+    state = "UNKNOWN"
+
+    try:
+        if resource.resource_type == "compute":
+            state = call_with_retry(
+                lambda: clients.compute.get_instance(resource.resource_id).data.lifecycle_state,
+                settings.retry,
+                logger,
+                f"get_instance:{resource.resource_id}",
+            )
+            return (state or "").upper() == "STOPPED", (state or "UNKNOWN").upper()
+
+        if resource.resource_type == "db_node":
+            state = call_with_retry(
+                lambda: clients.database.get_db_node(resource.resource_id).data.lifecycle_state,
+                settings.retry,
+                logger,
+                f"get_db_node:{resource.resource_id}",
+            )
+            return (state or "").upper() == "STOPPED", (state or "UNKNOWN").upper()
+
+        state = call_with_retry(
+            lambda: clients.database.get_autonomous_database(resource.resource_id).data.lifecycle_state,
+            settings.retry,
+            logger,
+            f"get_adb:{resource.resource_id}",
+        )
+        normalized_state = (state or "UNKNOWN").upper()
+        return normalized_state in {"STOPPED", "UNAVAILABLE"}, normalized_state
+    except Exception as exc:  # pragma: no cover
+        summary_error = (
+            f"verification failed for {resource.resource_type}:{resource.resource_name}"
+            f" ({resource.region}): {exc}"
+        )
+        logger.error(summary_error)
+        return False, "ERROR"

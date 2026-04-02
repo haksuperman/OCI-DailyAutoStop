@@ -18,6 +18,7 @@ class RetrySettings:
 class ExecutionSettings:
     default_dry_run: bool
     max_workers: int
+    post_check_delay_seconds: int
     stop_wait_timeout_seconds: int
     stop_wait_interval_seconds: int
 
@@ -102,6 +103,7 @@ def load_settings(config_path: str | Path) -> AppSettings:
         execution=ExecutionSettings(
             default_dry_run=bool(execution.get("default_dry_run", True)),
             max_workers=max(1, int(execution.get("max_workers", 4))),
+            post_check_delay_seconds=max(0, int(execution.get("post_check_delay_seconds", 10))),
             stop_wait_timeout_seconds=max(30, int(execution.get("stop_wait_timeout_seconds", 900))),
             stop_wait_interval_seconds=max(5, int(execution.get("stop_wait_interval_seconds", 20))),
         ),

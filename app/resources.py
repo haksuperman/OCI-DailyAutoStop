@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from collections.abc import Callable
 import logging
-import time
 
 from oci.pagination import list_call_get_all_results
 
@@ -69,13 +68,6 @@ def handle_compute_instances(clients, region: str, compartment: CompartmentInfo,
                     logger,
                     f"stop_instance:{record.resource_id}",
                 ),
-                state_fetcher=lambda: call_with_retry(
-                    lambda: clients.compute.get_instance(record.resource_id).data.lifecycle_state,
-                    settings.retry,
-                    logger,
-                    f"get_instance:{record.resource_id}",
-                ),
-                settings=settings,
             )
         )
     return results
@@ -130,13 +122,6 @@ def handle_db_nodes(clients, region: str, compartment: CompartmentInfo, settings
                         logger,
                         f"stop_db_node:{resource_id}",
                     ),
-                    state_fetcher=lambda resource_id=item.id: call_with_retry(
-                        lambda: clients.database.get_db_node(resource_id).data.lifecycle_state,
-                        settings.retry,
-                        logger,
-                        f"get_db_node:{resource_id}",
-                    ),
-                    settings=settings,
                 )
             )
     return results
@@ -180,13 +165,6 @@ def handle_adbs(clients, region: str, compartment: CompartmentInfo, settings: Ap
                     logger,
                     f"stop_adb:{record.resource_id}",
                 ),
-                state_fetcher=lambda: call_with_retry(
-                    lambda: clients.database.get_autonomous_database(record.resource_id).data.lifecycle_state,
-                    settings.retry,
-                    logger,
-                    f"get_adb:{record.resource_id}",
-                ),
-                settings=settings,
             )
         )
     return results
@@ -201,8 +179,6 @@ def _stop_or_skip(
     dry_run: bool,
     logger: logging.Logger,
     stop_func: Callable[[], object],
-    state_fetcher: Callable[[], str],
-    settings: AppSettings,
 ) -> ActionResult:
     state = (current_state or "").upper()
 
@@ -220,31 +196,6 @@ def _stop_or_skip(
 
     try:
         stop_func()
-        final_state = _wait_for_stop(state_fetcher, settings, logger, record)
-        return ActionResult(record, "requested", f"Stop confirmed: {final_state}")
+        return ActionResult(record, "requested", "Stop request sent")
     except Exception as exc:  # pragma: no cover
         return ActionResult(record, "failed", str(exc))
-
-
-def _wait_for_stop(
-    state_fetcher: Callable[[], str],
-    settings: AppSettings,
-    logger: logging.Logger,
-    record: ResourceRecord,
-) -> str:
-    deadline = time.time() + settings.execution.stop_wait_timeout_seconds
-    last_state = "UNKNOWN"
-    while time.time() < deadline:
-        last_state = (state_fetcher() or "").upper()
-        if last_state in {"STOPPED", "UNAVAILABLE"}:
-            return last_state
-        if last_state not in {"STOPPING", "STARTING", "PROVISIONING", "SCALING", "AVAILABLE", "RUNNING"}:
-            logger.warning(
-                "Resource reached unexpected post-stop state. resource_id=%s state=%s",
-                record.resource_id,
-                last_state,
-            )
-        time.sleep(settings.execution.stop_wait_interval_seconds)
-    raise TimeoutError(
-        f"Timed out waiting for stop confirmation. resource_id={record.resource_id}, last_state={last_state}"
-    )

@@ -32,9 +32,13 @@ class SummaryTest(unittest.TestCase):
         self.assertEqual(summary.already_stopped, 1)
         self.assertEqual(summary.transition, 1)
         self.assertEqual(summary.stop_requested, 2)
-        self.assertEqual(summary.success, 1)
+        self.assertEqual(summary.success, 0)
         self.assertEqual(summary.dry_run, 1)
         self.assertEqual(summary.failed, 1)
+        self.assertEqual(summary.verification["compute"].requested, 1)
+
+        summary.register_verification("compute", True)
+        self.assertEqual(summary.success, 1)
 
     def test_summary_render_includes_notes(self) -> None:
         summary = Summary()
@@ -76,6 +80,19 @@ class SummaryTest(unittest.TestCase):
         self.assertIn("  ├─ Already stopped : 1", rendered)
         self.assertIn("  └─ Stop targets (Dry-run) : 1", rendered)
         self.assertIn("Dry-run completed (total duration: 5m 33s)", rendered)
+
+    def test_build_summary_lines_uses_verified_stop_counts(self) -> None:
+        summary = Summary(
+            started_at=datetime(2026, 3, 31, 15, 0, 0),
+            completed_at=datetime(2026, 3, 31, 15, 0, 5),
+        )
+        requested = ActionResult(_resource(), "requested", "Stop request sent")
+        summary.register(requested)
+        summary.register_verification("compute", True)
+
+        rendered = "\n".join(build_summary_lines("prod", summary, [requested], False, ["ap-seoul-1"]))
+
+        self.assertIn("  └─ Stop by AutoStop : 1 → 1 successful", rendered)
 
     def test_build_completion_lines_renders_stop_request_counts(self) -> None:
         rendered = "\n".join(

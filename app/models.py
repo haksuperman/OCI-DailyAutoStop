@@ -35,6 +35,13 @@ class ActionResult:
 
 
 @dataclass
+class VerificationSummary:
+    requested: int = 0
+    confirmed_stopped: int = 0
+    still_running: int = 0
+
+
+@dataclass
 class Summary:
     scanned: int = 0
     already_stopped: int = 0
@@ -45,6 +52,13 @@ class Summary:
     dry_run: int = 0
     notes: list[str] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)
+    verification: dict[ResourceType, VerificationSummary] = field(
+        default_factory=lambda: {
+            "compute": VerificationSummary(),
+            "db_node": VerificationSummary(),
+            "adb": VerificationSummary(),
+        }
+    )
     started_at: datetime | None = None
     completed_at: datetime | None = None
     target_compartment_count: int = 0
@@ -58,7 +72,7 @@ class Summary:
             self.transition += 1
         elif result.status == "requested":
             self.stop_requested += 1
-            self.success += 1
+            self.verification[result.resource.resource_type].requested += 1
         elif result.status == "stopped":
             self.success += 1
         elif result.status == "dry_run":
@@ -72,6 +86,14 @@ class Summary:
 
     def add_error(self, message: str) -> None:
         self.errors.append(message)
+
+    def register_verification(self, resource_type: ResourceType, confirmed_stopped: bool) -> None:
+        summary = self.verification[resource_type]
+        if confirmed_stopped:
+            summary.confirmed_stopped += 1
+            self.success += 1
+        else:
+            summary.still_running += 1
 
     def render(self) -> str:
         lines = [

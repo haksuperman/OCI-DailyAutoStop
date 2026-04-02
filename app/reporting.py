@@ -43,9 +43,9 @@ def build_summary_lines(
         "=" * 60,
         "Summary Details",
     ]
-    lines.extend(_render_type_section_lines("Instances", type_counts["compute"], dry_run))
-    lines.extend(_render_type_section_lines("DB Nodes", type_counts["db_node"], dry_run))
-    lines.extend(_render_type_section_lines("ADBs", type_counts["adb"], dry_run))
+    lines.extend(_render_type_section_lines("Instances", "compute", type_counts["compute"], summary, dry_run))
+    lines.extend(_render_type_section_lines("DB Nodes", "db_node", type_counts["db_node"], summary, dry_run))
+    lines.extend(_render_type_section_lines("ADBs", "adb", type_counts["adb"], summary, dry_run))
     if summary.notes:
         lines.extend(
             [
@@ -83,7 +83,13 @@ def _build_type_counts(results: list[ActionResult]) -> dict[ResourceType, Counte
     return counts
 
 
-def _render_type_section_lines(title: str, counts: Counter[str], dry_run: bool) -> list[str]:
+def _render_type_section_lines(
+    title: str,
+    resource_type: ResourceType,
+    counts: Counter[str],
+    summary: Summary,
+    dry_run: bool,
+) -> list[str]:
     lines = [
         f" {title} scanned : {sum(counts.values())}",
         f"  ├─ Already stopped : {counts['already_stopped']}",
@@ -92,12 +98,15 @@ def _render_type_section_lines(title: str, counts: Counter[str], dry_run: bool) 
     if dry_run:
         lines.append(f"  └─ Stop targets (Dry-run) : {counts['dry_run']}")
     else:
-        lines.append(
-            f"  └─ Stop by AutoStop : {counts['requested']} → {counts['requested'] + counts['stopped']} successful"
-        )
+        lines.append(f"  └─ Stop by AutoStop : {render_verified_stop_line(summary, resource_type)}")
     if counts["failed"]:
         lines.append(f"    Failed : {counts['failed']}")
     return lines
+
+
+def render_verified_stop_line(summary: Summary, resource_type: ResourceType) -> str:
+    verification = summary.verification[resource_type]
+    return f"{verification.requested} → {verification.confirmed_stopped} successful"
 
 
 def _format_duration(started_at: datetime | None, completed_at: datetime | None) -> str:

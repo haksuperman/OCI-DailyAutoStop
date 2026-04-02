@@ -21,7 +21,7 @@ oci:
   excluded_regions: []
 
 scope:
-  mode: prod
+  mode: dev
   dev_base_compartment_name_or_ocid: <YOUR_DEV_BASE_COMPARTMENT_OCID>
   include_root_resources: false
   exception_file: config/autostop_compartment_exception.txt
@@ -29,6 +29,7 @@ scope:
 execution:
   default_dry_run: false
   max_workers: 4
+  post_check_delay_seconds: 10
   stop_wait_timeout_seconds: 900
   stop_wait_interval_seconds: 20
 

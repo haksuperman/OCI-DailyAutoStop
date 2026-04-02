@@ -28,6 +28,7 @@ def _settings(mode: str, regions: list[str], excluded_regions: list[str] | None 
         execution=ExecutionSettings(
             default_dry_run=True,
             max_workers=4,
+            post_check_delay_seconds=10,
             stop_wait_timeout_seconds=900,
             stop_wait_interval_seconds=20,
         ),
