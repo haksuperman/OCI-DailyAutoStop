@@ -1,14 +1,28 @@
 oci:
   config_file: ~/.oci/config
-  profile: DEFAULT
-  tenancy_ocid: null
+  profile: <YOUR_PROFILE>
+  tenancy_ocid: <YOUR_TENANCY_OCID>
   regions:
     - ap-seoul-1
+    - ap-chuncheon-1
+    - ap-osaka-1
+    - ap-tokyo-1
+    - ap-sydney-1
+    - ap-melbourne-1
+    - me-riyadh-1
+    - me-jeddah-1
+    - sa-saopaulo-1
+    - eu-frankfurt-1
+    - uk-london-1
+    - us-ashburn-1
+    - us-chicago-1
+    - us-phoenix-1
+    - us-sanjose-1
   excluded_regions: []
 
 scope:
   mode: dev
-  dev_base_compartment_name_or_ocid: haksu
+  dev_base_compartment_name_or_ocid: <YOUR_DEV_BASE_COMPARTMENT_OCID>
   include_root_resources: false
   exception_file: config/autostop_compartment_exception.txt
 
@@ -27,3 +41,4 @@ logging:
   directory: logs
   level: INFO
   summary_directory: logs/summary
+  backup_count: 30

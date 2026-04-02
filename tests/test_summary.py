@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import unittest
+from datetime import datetime
 
 from app.models import ActionResult, ResourceRecord, Summary
+from app.reporting import build_summary_lines
 
 
 def _resource() -> ResourceRecord:
@@ -33,6 +35,47 @@ class SummaryTest(unittest.TestCase):
         self.assertEqual(summary.success, 1)
         self.assertEqual(summary.dry_run, 1)
         self.assertEqual(summary.failed, 1)
+
+    def test_summary_render_includes_notes(self) -> None:
+        summary = Summary()
+        summary.add_note("region source: subscribed")
+
+        rendered = summary.render()
+
+        self.assertIn("- notes:", rendered)
+        self.assertIn("region source: subscribed", rendered)
+
+    def test_build_summary_lines_renders_readable_report(self) -> None:
+        summary = Summary(
+            started_at=datetime(2026, 3, 31, 15, 0, 0),
+            completed_at=datetime(2026, 3, 31, 15, 5, 33),
+            target_compartment_count=4,
+            target_region_count=2,
+        )
+        summary.add_note("region source: configured")
+        summary.register(ActionResult(_resource(), "already_stopped", "Already stopped: STOPPED"))
+        summary.register(ActionResult(_resource(), "dry_run", "Dry-run stop request prepared"))
+
+        rendered = "\n".join(
+            build_summary_lines(
+                "dev",
+                summary,
+                [
+                    ActionResult(_resource(), "already_stopped", "Already stopped: STOPPED"),
+                    ActionResult(_resource(), "dry_run", "Dry-run stop request prepared"),
+                ],
+                True,
+                ["ap-seoul-1", "ap-tokyo-1"],
+            )
+        )
+
+        self.assertNotIn("OCI Daily AutoStop Summary", rendered)
+        self.assertNotIn(" - Target             : 4 compartment(s), 2 region(s)", rendered)
+        self.assertIn("Summary Details", rendered)
+        self.assertIn(" Instances scanned : 2", rendered)
+        self.assertIn("  ├─ Already stopped : 1", rendered)
+        self.assertIn("  └─ Stop targets (Dry-run) : 1", rendered)
+        self.assertIn("Dry-run completed (total duration: 5m 33s)", rendered)
 
 
 if __name__ == "__main__":

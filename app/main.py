@@ -6,8 +6,7 @@ import sys
 
 from app.config import load_settings
 from app.logging_utils import configure_logging
-from app.oci_clients import load_oci_config, validate_tenancy
-from app.reporting import write_summary
+from app.oci_clients import load_oci_config, resolve_execution_regions, validate_tenancy
 from app.service import run_autostop
 
 
@@ -23,22 +22,22 @@ def main() -> int:
 
     try:
         settings = load_settings(args.config)
-        log_file = configure_logging(settings.logging.directory, settings.logging.level)
+        log_file = configure_logging(
+            settings.logging.directory,
+            settings.logging.level,
+            settings.logging.backup_count,
+        )
         logger = logging.getLogger("app.main")
         dry_run = args.dry_run or settings.execution.default_dry_run
 
-        logger.info("Starting OCI AutoStop. mode=%s dry_run=%s", settings.scope.mode, dry_run)
         oci_config = load_oci_config(settings)
         tenancy_ocid = validate_tenancy(oci_config, logger)
+        region_resolution = resolve_execution_regions(settings, oci_config, tenancy_ocid, logger)
 
-        summary, results = run_autostop(settings, oci_config, tenancy_ocid, dry_run)
-        summary_file = write_summary(settings, summary, results, dry_run)
-
-        logger.info("Summary written to %s", summary_file)
+        summary, results = run_autostop(settings, oci_config, tenancy_ocid, dry_run, region_resolution.regions)
+        for note in region_resolution.notes:
+            summary.add_note(note)
         logger.info("Execution log file %s", log_file)
-        print(summary.render())
-        print(f"summary_file: {summary_file}")
-        print(f"log_file: {log_file}")
         return 0
     except Exception as exc:
         logging.getLogger("app.main").exception("Application failed")

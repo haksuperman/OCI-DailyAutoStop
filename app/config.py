@@ -27,6 +27,7 @@ class LoggingSettings:
     directory: Path
     level: str
     summary_directory: Path
+    backup_count: int
 
 
 @dataclass(frozen=True)
@@ -35,6 +36,7 @@ class OciSettings:
     profile: str
     tenancy_ocid: str | None
     regions: list[str]
+    excluded_regions: list[str]
 
 
 @dataclass(frozen=True)
@@ -67,13 +69,14 @@ def load_settings(config_path: str | Path) -> AppSettings:
     retry = _require_dict(raw, "retry")
     logging_cfg = _require_dict(raw, "logging")
 
-    regions = list(oci.get("regions") or [])
-    if not regions:
-        raise ValueError("settings.oci.regions must not be empty")
+    regions = [str(region).strip() for region in list(oci.get("regions") or []) if str(region).strip()]
+    excluded_regions = [str(region).strip() for region in list(oci.get("excluded_regions") or []) if str(region).strip()]
 
     mode = str(scope.get("mode", "")).strip().lower()
     if mode not in {"dev", "prod"}:
         raise ValueError("settings.scope.mode must be 'dev' or 'prod'")
+    if mode == "dev" and not regions:
+        raise ValueError("settings.oci.regions must not be empty in dev mode")
 
     dev_base = scope.get("dev_base_compartment_name_or_ocid")
     if mode == "dev" and not dev_base:
@@ -85,6 +88,7 @@ def load_settings(config_path: str | Path) -> AppSettings:
             profile=str(oci.get("profile", "DEFAULT")),
             tenancy_ocid=_optional_str(oci.get("tenancy_ocid")),
             regions=regions,
+            excluded_regions=excluded_regions,
         ),
         scope=ScopeSettings(
             mode=mode,
@@ -110,6 +114,7 @@ def load_settings(config_path: str | Path) -> AppSettings:
             directory=_resolve_path(base_dir, str(logging_cfg.get("directory", "logs"))),
             level=str(logging_cfg.get("level", "INFO")).upper(),
             summary_directory=_resolve_path(base_dir, str(logging_cfg.get("summary_directory", "logs/summary"))),
+            backup_count=max(1, int(logging_cfg.get("backup_count", 30))),
         ),
     )
 

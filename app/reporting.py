@@ -1,44 +1,94 @@
 from __future__ import annotations
 
+from collections import Counter
 from datetime import datetime
-from pathlib import Path
+from app.models import ActionResult, ResourceType, Summary
 
-from app.config import AppSettings
-from app.models import ActionResult, Summary
-
-
-def write_summary(
-    settings: AppSettings,
+def build_summary_lines(
+    mode: str,
     summary: Summary,
     results: list[ActionResult],
     dry_run: bool,
-) -> Path:
-    settings.logging.summary_directory.mkdir(parents=True, exist_ok=True)
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    path = settings.logging.summary_directory / f"summary_{timestamp}.txt"
+    regions: list[str],
+) -> list[str]:
+    type_counts = _build_type_counts(results)
+    duration = _format_duration(summary.started_at, summary.completed_at)
 
     lines = [
-        summary.render(),
-        "",
-        f"mode: {settings.scope.mode}",
-        f"dry_run: {dry_run}",
-        f"regions: {', '.join(settings.oci.regions)}",
-        "",
-        "Detailed Results",
+        "=" * 60,
+        "Summary Details",
     ]
-    for result in results:
-        lines.append(
-            " | ".join(
-                [
-                    result.status,
-                    result.resource.resource_type,
-                    result.resource.region,
-                    result.resource.compartment_name,
-                    result.resource.resource_name,
-                    result.resource.lifecycle_state,
-                    result.message,
-                ]
-            )
+    lines.extend(_render_type_section_lines("Instances", type_counts["compute"], dry_run))
+    lines.extend(_render_type_section_lines("DB Nodes", type_counts["db_node"], dry_run))
+    lines.extend(_render_type_section_lines("ADBs", type_counts["adb"], dry_run))
+    if summary.notes:
+        lines.extend(
+            [
+                "",
+                "Notes",
+                *[f" - {note}" for note in summary.notes],
+            ]
         )
-    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
-    return path
+    if summary.errors:
+        lines.extend(
+            [
+                "",
+                "Errors",
+                *[f" - {error}" for error in summary.errors],
+            ]
+        )
+    lines.extend(
+        [
+            "",
+            _build_completion_line(dry_run, duration),
+            "=" * 60,
+        ]
+    )
+    return lines
+
+
+def _build_type_counts(results: list[ActionResult]) -> dict[ResourceType, Counter[str]]:
+    counts: dict[ResourceType, Counter[str]] = {
+        "compute": Counter(),
+        "db_node": Counter(),
+        "adb": Counter(),
+    }
+    for result in results:
+        counts[result.resource.resource_type][result.status] += 1
+    return counts
+
+
+def _render_type_section_lines(title: str, counts: Counter[str], dry_run: bool) -> list[str]:
+    lines = [
+        f" {title} scanned : {sum(counts.values())}",
+        f"  ├─ Already stopped : {counts['already_stopped']}",
+        f"  ├─ In transition   : {counts['transition']}",
+    ]
+    if dry_run:
+        lines.append(f"  └─ Stop targets (Dry-run) : {counts['dry_run']}")
+    else:
+        lines.append(
+            f"  └─ Stop by AutoStop : {counts['requested']} → {counts['requested'] + counts['stopped']} successful"
+        )
+    if counts["failed"]:
+        lines.append(f"    Failed : {counts['failed']}")
+    return lines
+
+
+def _format_duration(started_at: datetime | None, completed_at: datetime | None) -> str:
+    if not started_at or not completed_at:
+        return "unknown"
+    total_seconds = max(0, int((completed_at - started_at).total_seconds()))
+    minutes, seconds = divmod(total_seconds, 60)
+    hours, minutes = divmod(minutes, 60)
+    if hours:
+        return f"{hours}h {minutes}m {seconds}s"
+    if minutes:
+        return f"{minutes}m {seconds}s"
+    return f"{total_seconds}s"
+
+
+def _build_completion_line(dry_run: bool, duration: str) -> str:
+    if dry_run:
+        return f"Dry-run completed (total duration: {duration})"
+    return f"AutoStop completed (total duration: {duration})"

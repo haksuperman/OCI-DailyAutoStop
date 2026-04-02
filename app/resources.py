@@ -207,28 +207,22 @@ def _stop_or_skip(
     state = (current_state or "").upper()
 
     if state in stopped_states:
-        logger.info("Skipping already stopped resource %s (%s)", record.resource_name, record.resource_id)
         return ActionResult(record, "already_stopped", f"Already stopped: {state}")
 
     if state in transition_states:
-        logger.warning("Skipping transition state resource %s (%s): %s", record.resource_name, record.resource_id, state)
         return ActionResult(record, "transition", f"Transition state: {state}")
 
     if state != running_state:
-        logger.info("Skipping unsupported state resource %s (%s): %s", record.resource_name, record.resource_id, state)
         return ActionResult(record, "already_stopped", f"Non-target state: {state}")
 
     if dry_run:
-        logger.info("Dry-run stop request %s (%s)", record.resource_name, record.resource_id)
         return ActionResult(record, "dry_run", "Dry-run stop request prepared")
 
     try:
         stop_func()
         final_state = _wait_for_stop(state_fetcher, settings, logger, record)
-        logger.info("Stop confirmed for %s (%s). final_state=%s", record.resource_name, record.resource_id, final_state)
         return ActionResult(record, "requested", f"Stop confirmed: {final_state}")
     except Exception as exc:  # pragma: no cover
-        logger.exception("Stop failed for %s (%s)", record.resource_name, record.resource_id)
         return ActionResult(record, "failed", str(exc))
 
 

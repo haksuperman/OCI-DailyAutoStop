@@ -36,11 +36,10 @@ def build_target_compartments(
             settings.retry,
             logger,
         )
-        logger.info("DEV mode enabled. Limiting scope to compartment %s (%s)", base.name, base.id)
-        compartments = list_subtree_compartments(clients.identity, base.id, settings.retry, logger)
+        compartments = list_subtree_compartments(clients.identity, base.id, tenancy_ocid, settings.retry, logger)
         compartments.insert(0, base)
     else:
-        compartments = list_subtree_compartments(clients.identity, tenancy_ocid, settings.retry, logger)
+        compartments = list_subtree_compartments(clients.identity, tenancy_ocid, tenancy_ocid, settings.retry, logger)
 
     unique = {comp.id: comp for comp in compartments}
     if settings.scope.mode == "prod" and settings.scope.include_root_resources:
@@ -56,34 +55,63 @@ def build_target_compartments(
 
     filtered = [comp for comp in unique.values() if comp.id not in exceptions]
     filtered.sort(key=lambda item: (item.name.lower(), item.id))
-    logger.info(
-        "Target compartments resolved. mode=%s total=%d excluded=%d final=%d",
-        settings.scope.mode,
-        len(unique),
-        len(exceptions),
-        len(filtered),
-    )
     return filtered
 
 
-def list_subtree_compartments(identity_client, root_id: str, retry_settings, logger: logging.Logger) -> list[CompartmentInfo]:
-    response = call_with_retry(
-        lambda: list_call_get_all_results(
-            identity_client.list_compartments,
-            compartment_id=root_id,
-            compartment_id_in_subtree=True,
-            access_level="ANY",
-            lifecycle_state="ACTIVE",
-        ),
-        retry_settings,
-        logger,
-        f"list_compartments:{root_id}",
-    )
+def list_subtree_compartments(
+    identity_client,
+    root_id: str,
+    tenancy_ocid: str,
+    retry_settings,
+    logger: logging.Logger,
+) -> list[CompartmentInfo]:
+    if root_id == tenancy_ocid:
+        response = call_with_retry(
+            lambda: list_call_get_all_results(
+                identity_client.list_compartments,
+                compartment_id=root_id,
+                compartment_id_in_subtree=True,
+                access_level="ANY",
+                lifecycle_state="ACTIVE",
+            ),
+            retry_settings,
+            logger,
+            f"list_compartments:{root_id}",
+        )
+        result: list[CompartmentInfo] = []
+        for item in response.data:
+            if item.id == root_id:
+                continue
+            result.append(CompartmentInfo(id=item.id, name=item.name, parent_id=item.compartment_id))
+        return result
+
     result: list[CompartmentInfo] = []
-    for item in response.data:
-        if item.id == root_id:
+    pending = [root_id]
+    seen: set[str] = set()
+
+    while pending:
+        parent_id = pending.pop()
+        if parent_id in seen:
             continue
-        result.append(CompartmentInfo(id=item.id, name=item.name, parent_id=item.compartment_id))
+        seen.add(parent_id)
+
+        response = call_with_retry(
+            lambda parent_id=parent_id: list_call_get_all_results(
+                identity_client.list_compartments,
+                compartment_id=parent_id,
+                compartment_id_in_subtree=False,
+                access_level="ANY",
+                lifecycle_state="ACTIVE",
+            ),
+            retry_settings,
+            logger,
+            f"list_compartments_children:{parent_id}",
+        )
+        for item in response.data:
+            compartment = CompartmentInfo(id=item.id, name=item.name, parent_id=item.compartment_id)
+            result.append(compartment)
+            pending.append(item.id)
+
     return result
 
 
@@ -137,7 +165,7 @@ def resolve_exception_compartments(
     for entry in entries:
         compartment = resolve_compartment_entry(identity_client, tenancy_ocid, entry, settings.retry, logger, current_scope)
         excluded.add(compartment.id)
-        for child in list_subtree_compartments(identity_client, compartment.id, settings.retry, logger):
+        for child in list_subtree_compartments(identity_client, compartment.id, tenancy_ocid, settings.retry, logger):
             excluded.add(child.id)
     return excluded
 
