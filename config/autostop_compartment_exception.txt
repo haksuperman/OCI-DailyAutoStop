@@ -1,0 +1,18 @@
+# Comment lines are ignored.
+# Blank lines are allowed.
+#
+# Use either a compartment OCID or an exact compartment name.
+# In PROD, the listed compartment and its full subtree are excluded.
+# In DEV, this file is optional and can be used to exclude a subtree inside dev-base.
+
+# sample-shared
+# ocid1.compartment.oc1..exampleuniqueID
+
+# <EXCEPTION_COMPARTMENT_NAME_1>
+<EXCEPTION_COMPARTMENT_OCID_1>
+
+# <EXCEPTION_COMPARTMENT_NAME_2>
+<EXCEPTION_COMPARTMENT_OCID_2>
+
+# <EXCEPTION_COMPARTMENT_NAME_3>
+<EXCEPTION_COMPARTMENT_OCID_3>
