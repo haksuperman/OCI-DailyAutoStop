@@ -15,6 +15,7 @@ class ClientBundle:
     identity: oci.identity.IdentityClient
     compute: oci.core.ComputeClient
     database: oci.database.DatabaseClient
+    mysql: oci.mysql.DbSystemClient
     retry_strategy: oci.retry.NoneRetryStrategy
 
 
@@ -43,6 +44,7 @@ def build_clients(config: dict[str, str], region: str) -> ClientBundle:
         identity=oci.identity.IdentityClient(regional_config, retry_strategy=retry_strategy),
         compute=oci.core.ComputeClient(regional_config, retry_strategy=retry_strategy),
         database=oci.database.DatabaseClient(regional_config, retry_strategy=retry_strategy),
+        mysql=oci.mysql.DbSystemClient(regional_config, retry_strategy=retry_strategy),
         retry_strategy=retry_strategy,
     )
 

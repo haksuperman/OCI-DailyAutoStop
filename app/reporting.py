@@ -12,16 +12,18 @@ def build_completion_lines(
     if dry_run:
         message = (
             "Dry-run analysis completed "
-            f"({counts['compute']['dry_run']} Instance(s), "
-            f"{counts['db_node']['dry_run']} DB Node(s), "
-            f"{counts['adb']['dry_run']} ADB(s) matched)."
+            f"({counts['instance']['dry_run']} Instance(s), "
+            f"{counts['oracle_base_db']['dry_run']} Oracle Base DB Node(s), "
+            f"{counts['adb']['dry_run']} ADB(s), "
+            f"{counts['mysql_heatwave']['dry_run']} MySQL HeatWave DB System(s) matched)."
         )
     else:
         message = (
             "Stop requests completed "
-            f"({counts['compute']['requested']} Instance(s), "
-            f"{counts['db_node']['requested']} DB Node(s), "
-            f"{counts['adb']['requested']} ADB(s))."
+            f"({counts['instance']['requested']} Instance(s), "
+            f"{counts['oracle_base_db']['requested']} Oracle Base DB Node(s), "
+            f"{counts['adb']['requested']} ADB(s), "
+            f"{counts['mysql_heatwave']['requested']} MySQL HeatWave DB System(s))."
         )
     return [
         "=" * 60,
@@ -43,9 +45,10 @@ def build_summary_lines(
         "=" * 60,
         "Summary Details",
     ]
-    lines.extend(_render_type_section_lines("Instances", "compute", type_counts["compute"], summary, dry_run))
-    lines.extend(_render_type_section_lines("DB Nodes", "db_node", type_counts["db_node"], summary, dry_run))
-    lines.extend(_render_type_section_lines("ADBs", "adb", type_counts["adb"], summary, dry_run))
+    lines.extend(_render_type_section_lines("Instance(s)", "instance", type_counts["instance"], summary, dry_run))
+    lines.extend(_render_type_section_lines("Oracle Base DB Node(s)", "oracle_base_db", type_counts["oracle_base_db"], summary, dry_run))
+    lines.extend(_render_type_section_lines("ADB(s)", "adb", type_counts["adb"], summary, dry_run))
+    lines.extend(_render_type_section_lines("MySQL HeatWave DB System(s)", "mysql_heatwave", type_counts["mysql_heatwave"], summary, dry_run))
     if summary.notes:
         lines.extend(
             [
@@ -74,9 +77,10 @@ def build_summary_lines(
 
 def _build_type_counts(results: list[ActionResult]) -> dict[ResourceType, Counter[str]]:
     counts: dict[ResourceType, Counter[str]] = {
-        "compute": Counter(),
-        "db_node": Counter(),
+        "instance": Counter(),
+        "oracle_base_db": Counter(),
         "adb": Counter(),
+        "mysql_heatwave": Counter(),
     }
     for result in results:
         counts[result.resource.resource_type][result.status] += 1

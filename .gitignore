@@ -1,4 +1,6 @@
-/.codex
+.codex/
+.agents/
+.venv/
 __pycache__/
 *.py[cod]
-logs/*.log
+logs/

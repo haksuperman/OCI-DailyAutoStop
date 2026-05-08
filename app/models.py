@@ -5,7 +5,7 @@ from datetime import datetime
 from typing import Literal
 
 
-ResourceType = Literal["compute", "db_node", "adb"]
+ResourceType = Literal["instance", "oracle_base_db", "adb", "mysql_heatwave"]
 ActionStatus = Literal["stopped", "already_stopped", "transition", "requested", "failed", "dry_run"]
 
 
@@ -54,9 +54,10 @@ class Summary:
     errors: list[str] = field(default_factory=list)
     verification: dict[ResourceType, VerificationSummary] = field(
         default_factory=lambda: {
-            "compute": VerificationSummary(),
-            "db_node": VerificationSummary(),
+            "instance": VerificationSummary(),
+            "oracle_base_db": VerificationSummary(),
             "adb": VerificationSummary(),
+            "mysql_heatwave": VerificationSummary(),
         }
     )
     started_at: datetime | None = None

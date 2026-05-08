@@ -7,7 +7,7 @@ from unittest.mock import MagicMock, patch
 
 from app.config import AppSettings, ExecutionSettings, LoggingSettings, OciSettings, RetrySettings, ScopeSettings
 from app.models import ActionResult, CompartmentInfo, ResourceRecord, Summary
-from app.service import BufferedLogRecord, RegionJobResult, _run_compartment_job, run_autostop
+from app.service import BufferedLogRecord, RegionJobResult, _format_action_result, _run_compartment_job, run_autostop
 
 
 def _settings(max_workers: int = 4) -> AppSettings:
@@ -49,13 +49,37 @@ def _settings(max_workers: int = 4) -> AppSettings:
 
 def _resource(region: str) -> ResourceRecord:
     return ResourceRecord(
-        resource_type="compute",
+        resource_type="instance",
         region=region,
-        compartment_id="ocid1.compartment.oc1..example",
+        compartment_id="example-compartment-ocid",
         compartment_name="alpha",
-        resource_id=f"ocid1.instance.oc1..{region}",
+        resource_id=f"example-instance-{region}",
         resource_name=f"vm-{region}",
         lifecycle_state="RUNNING",
+    )
+
+
+def _mysql_heatwave_resource(region: str) -> ResourceRecord:
+    return ResourceRecord(
+        resource_type="mysql_heatwave",
+        region=region,
+        compartment_id="example-compartment-ocid",
+        compartment_name="alpha",
+        resource_id=f"example-mysql-{region}",
+        resource_name=f"mysql-{region}",
+        lifecycle_state="ACTIVE",
+    )
+
+
+def _oracle_base_db_resource(region: str) -> ResourceRecord:
+    return ResourceRecord(
+        resource_type="oracle_base_db",
+        region=region,
+        compartment_id="example-compartment-ocid",
+        compartment_name="alpha",
+        resource_id=f"example-db-node-{region}",
+        resource_name=f"dbnode-{region}",
+        lifecycle_state="AVAILABLE",
     )
 
 
@@ -131,7 +155,7 @@ class ServiceTest(unittest.TestCase):
         logger.addHandler(handler)
         logger.setLevel(logging.INFO)
 
-        run_autostop(settings, {"region": "ap-seoul-1"}, "ocid1.tenancy.oc1..example", True, ["ap-seoul-1"])
+        run_autostop(settings, {"region": "ap-seoul-1"}, "example-tenancy-ocid", True, ["ap-seoul-1"])
         verify_requested_stops_mock.assert_not_called()
 
         messages = [record.getMessage() for record in handler.records]
@@ -159,9 +183,49 @@ class ServiceTest(unittest.TestCase):
         _verify_requested_stops(summary, [requested], settings, {"region": "ap-seoul-1"}, logging.getLogger("test.verify"))
 
         sleep_mock.assert_called_once_with(10)
-        self.assertEqual(summary.verification["compute"].requested, 1)
-        self.assertEqual(summary.verification["compute"].confirmed_stopped, 1)
+        self.assertEqual(summary.verification["instance"].requested, 1)
+        self.assertEqual(summary.verification["instance"].confirmed_stopped, 1)
         self.assertEqual(summary.success, 1)
+
+    @patch("app.service.time.sleep")
+    @patch("app.service.build_clients")
+    def test_verify_requested_stops_updates_summary_for_mysql_heatwave(self, build_clients_mock, sleep_mock) -> None:
+        from types import SimpleNamespace
+
+        from app.service import _verify_requested_stops
+
+        settings = _settings(max_workers=1)
+        summary = Summary()
+        requested = ActionResult(_mysql_heatwave_resource("ap-seoul-1"), "requested", "Stop request sent")
+        summary.register(requested)
+        build_clients_mock.return_value = SimpleNamespace(
+            compute=SimpleNamespace(),
+            database=SimpleNamespace(),
+            mysql=SimpleNamespace(get_db_system=lambda resource_id: SimpleNamespace(data=SimpleNamespace(lifecycle_state="INACTIVE"))),
+        )
+
+        _verify_requested_stops(summary, [requested], settings, {"region": "ap-seoul-1"}, logging.getLogger("test.verify"))
+
+        sleep_mock.assert_called_once_with(10)
+        self.assertEqual(summary.verification["mysql_heatwave"].requested, 1)
+        self.assertEqual(summary.verification["mysql_heatwave"].confirmed_stopped, 1)
+        self.assertEqual(summary.success, 1)
+
+    def test_format_action_result_labels_mysql_heatwave(self) -> None:
+        result = ActionResult(_mysql_heatwave_resource("ap-seoul-1"), "dry_run", "Dry-run stop request prepared")
+
+        self.assertEqual(
+            _format_action_result(result, True),
+            "[MySQL HeatWave] mysql-ap-seoul-1 (ap-seoul-1) -> Stop target (dry-run)",
+        )
+
+    def test_format_action_result_labels_oracle_base_db(self) -> None:
+        result = ActionResult(_oracle_base_db_resource("ap-seoul-1"), "requested", "Stop request sent")
+
+        self.assertEqual(
+            _format_action_result(result, False),
+            "[Oracle Base DB] dbnode-ap-seoul-1 (ap-seoul-1) -> Stop request sent",
+        )
 
     @patch("app.service.ThreadPoolExecutor")
     @patch("app.service._verify_region_requested_stops")

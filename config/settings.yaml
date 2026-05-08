@@ -1,7 +1,7 @@
 oci:
   config_file: ~/.oci/config
-  profile: <YOUR_PROFILE>
-  tenancy_ocid: <YOUR_TENANCY_OCID>
+  profile: DEFAULT
+  tenancy_ocid: null
   regions:
     - ap-seoul-1
     - ap-chuncheon-1
@@ -22,7 +22,7 @@ oci:
 
 scope:
   mode: dev
-  dev_base_compartment_name_or_ocid: <YOUR_DEV_BASE_COMPARTMENT_OCID_OR_NAME>
+  dev_base_compartment_name_or_ocid: example-dev-base
   include_root_resources: false
   exception_file: config/autostop_compartment_exception.txt
 

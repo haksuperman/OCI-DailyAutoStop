@@ -21,14 +21,14 @@ class LoadExceptionEntriesTest(unittest.TestCase):
                         "",
                         "finance-shared",
                         "  ",
-                        "ocid1.compartment.oc1..example",
+                        "example-compartment-ocid",
                     ]
                 ),
                 encoding="utf-8",
             )
             self.assertEqual(
                 load_exception_entries(path),
-                ["finance-shared", "ocid1.compartment.oc1..example"],
+                ["finance-shared", "example-compartment-ocid"],
             )
 
 

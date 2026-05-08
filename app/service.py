@@ -186,7 +186,7 @@ def _build_start_banner(
 ) -> list[str]:
     return [
         "=" * 60,
-        "OCI Daily AutoStop (Instance, DB Node, ADB)",
+        "OCI Daily AutoStop (Instance, Oracle Base DB, ADB, MySQL HeatWave)",
         f" - Date               : {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
         f" - Mode               : {mode}",
         f" - Dry Run            : {str(dry_run).lower()}",
@@ -208,9 +208,10 @@ def _flush_buffered_logs(logger: logging.Logger, records: list[BufferedLogRecord
 
 def _format_action_result(result: ActionResult, dry_run: bool) -> str:
     resource_labels = {
-        "compute": "Instance",
-        "db_node": "DB Node",
+        "instance": "Instance",
+        "oracle_base_db": "Oracle Base DB",
         "adb": "ADB",
+        "mysql_heatwave": "MySQL HeatWave",
     }
     status_messages = {
         "already_stopped": "Already stopped (no action)",
@@ -312,7 +313,7 @@ def _check_resource_stopped(
 ) -> tuple[ResourceRecord, bool, str]:
     state = "UNKNOWN"
 
-    if resource.resource_type == "compute":
+    if resource.resource_type == "instance":
         state = call_with_retry(
             lambda: clients.compute.get_instance(resource.resource_id).data.lifecycle_state,
             settings.retry,
@@ -322,7 +323,7 @@ def _check_resource_stopped(
         normalized_state = (state or "UNKNOWN").upper()
         return resource, normalized_state == "STOPPED", normalized_state
 
-    if resource.resource_type == "db_node":
+    if resource.resource_type == "oracle_base_db":
         state = call_with_retry(
             lambda: clients.database.get_db_node(resource.resource_id).data.lifecycle_state,
             settings.retry,
@@ -332,11 +333,24 @@ def _check_resource_stopped(
         normalized_state = (state or "UNKNOWN").upper()
         return resource, normalized_state == "STOPPED", normalized_state
 
-    state = call_with_retry(
-        lambda: clients.database.get_autonomous_database(resource.resource_id).data.lifecycle_state,
-        settings.retry,
-        logger,
-        f"get_adb:{resource.resource_id}",
-    )
-    normalized_state = (state or "UNKNOWN").upper()
-    return resource, normalized_state in {"STOPPED", "UNAVAILABLE"}, normalized_state
+    if resource.resource_type == "mysql_heatwave":
+        state = call_with_retry(
+            lambda: clients.mysql.get_db_system(resource.resource_id).data.lifecycle_state,
+            settings.retry,
+            logger,
+            f"get_mysql_db_system:{resource.resource_id}",
+        )
+        normalized_state = (state or "UNKNOWN").upper()
+        return resource, normalized_state == "INACTIVE", normalized_state
+
+    if resource.resource_type == "adb":
+        state = call_with_retry(
+            lambda: clients.database.get_autonomous_database(resource.resource_id).data.lifecycle_state,
+            settings.retry,
+            logger,
+            f"get_adb:{resource.resource_id}",
+        )
+        normalized_state = (state or "UNKNOWN").upper()
+        return resource, normalized_state in {"STOPPED", "UNAVAILABLE"}, normalized_state
+
+    raise ValueError(f"Unsupported resource type: {resource.resource_type}")

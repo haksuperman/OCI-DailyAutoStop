@@ -9,11 +9,11 @@ from app.reporting import build_completion_lines, build_summary_lines
 
 def _resource() -> ResourceRecord:
     return ResourceRecord(
-        resource_type="compute",
+        resource_type="instance",
         region="ap-seoul-1",
-        compartment_id="ocid1.compartment.oc1..example",
+        compartment_id="example-compartment-ocid",
         compartment_name="dev-base",
-        resource_id="ocid1.instance.oc1..example",
+        resource_id="example-instance-ocid",
         resource_name="vm-a",
         lifecycle_state="RUNNING",
     )
@@ -35,9 +35,9 @@ class SummaryTest(unittest.TestCase):
         self.assertEqual(summary.success, 0)
         self.assertEqual(summary.dry_run, 1)
         self.assertEqual(summary.failed, 1)
-        self.assertEqual(summary.verification["compute"].requested, 1)
+        self.assertEqual(summary.verification["instance"].requested, 1)
 
-        summary.register_verification("compute", True)
+        summary.register_verification("instance", True)
         self.assertEqual(summary.success, 1)
 
     def test_summary_render_includes_notes(self) -> None:
@@ -76,7 +76,7 @@ class SummaryTest(unittest.TestCase):
         self.assertNotIn("OCI Daily AutoStop Summary", rendered)
         self.assertNotIn(" - Target             : 4 compartment(s), 2 region(s)", rendered)
         self.assertIn("Summary Details", rendered)
-        self.assertIn(" Instances scanned : 2", rendered)
+        self.assertIn(" Instance(s) scanned : 2", rendered)
         self.assertIn("  ├─ Already stopped : 1", rendered)
         self.assertIn("  └─ Stop targets (Dry-run) : 1", rendered)
         self.assertIn("Dry-run completed (total duration: 5m 33s)", rendered)
@@ -88,7 +88,7 @@ class SummaryTest(unittest.TestCase):
         )
         requested = ActionResult(_resource(), "requested", "Stop request sent")
         summary.register(requested)
-        summary.register_verification("compute", True)
+        summary.register_verification("instance", True)
 
         rendered = "\n".join(build_summary_lines("prod", summary, [requested], False, ["ap-seoul-1"]))
 
@@ -106,7 +106,7 @@ class SummaryTest(unittest.TestCase):
         )
 
         self.assertIn("============================================================", rendered)
-        self.assertIn("Stop requests completed (1 Instance(s), 0 DB Node(s), 0 ADB(s)).", rendered)
+        self.assertIn("Stop requests completed (1 Instance(s), 0 Oracle Base DB Node(s), 0 ADB(s), 0 MySQL HeatWave DB System(s)).", rendered)
 
     def test_build_completion_lines_renders_dry_run_counts(self) -> None:
         rendered = "\n".join(
@@ -119,7 +119,7 @@ class SummaryTest(unittest.TestCase):
             )
         )
 
-        self.assertIn("Dry-run analysis completed (1 Instance(s), 0 DB Node(s), 0 ADB(s) matched).", rendered)
+        self.assertIn("Dry-run analysis completed (1 Instance(s), 0 Oracle Base DB Node(s), 0 ADB(s), 0 MySQL HeatWave DB System(s) matched).", rendered)
 
 
 if __name__ == "__main__":

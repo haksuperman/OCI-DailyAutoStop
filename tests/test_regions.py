@@ -59,7 +59,7 @@ class ResolveExecutionRegionsTest(unittest.TestCase):
     def test_dev_uses_configured_regions_after_exclusions(self) -> None:
         settings = _settings("dev", ["ap-seoul-1", "ap-tokyo-1"], ["ap-tokyo-1"])
 
-        resolution = resolve_execution_regions(settings, {"region": "ap-seoul-1"}, "ocid1.tenancy.oc1..example", _logger())
+        resolution = resolve_execution_regions(settings, {"region": "ap-seoul-1"}, "example-tenancy-ocid", _logger())
 
         self.assertEqual(resolution.regions, ["ap-seoul-1"])
         self.assertIn("region source: configured", resolution.notes)
@@ -72,7 +72,7 @@ class ResolveExecutionRegionsTest(unittest.TestCase):
         build_clients_mock.return_value = SimpleNamespace(identity=object())
         list_subscribed_regions_mock.return_value = ["ap-seoul-1", "us-ashburn-1", "uk-london-1"]
 
-        resolution = resolve_execution_regions(settings, {"region": "ap-seoul-1"}, "ocid1.tenancy.oc1..example", _logger())
+        resolution = resolve_execution_regions(settings, {"region": "ap-seoul-1"}, "example-tenancy-ocid", _logger())
 
         self.assertEqual(resolution.regions, ["ap-seoul-1", "uk-london-1"])
         self.assertIn("region source: subscribed", resolution.notes)
@@ -85,7 +85,7 @@ class ResolveExecutionRegionsTest(unittest.TestCase):
         build_clients_mock.return_value = SimpleNamespace(identity=object())
         list_subscribed_regions_mock.side_effect = RuntimeError("permission denied")
 
-        resolution = resolve_execution_regions(settings, {"region": "ap-seoul-1"}, "ocid1.tenancy.oc1..example", _logger())
+        resolution = resolve_execution_regions(settings, {"region": "ap-seoul-1"}, "example-tenancy-ocid", _logger())
 
         self.assertEqual(resolution.regions, ["ap-seoul-1"])
         self.assertTrue(resolution.notes[0].startswith("prod region auto-discovery failed; fallback configured regions used:"))
