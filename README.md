@@ -132,7 +132,11 @@ OCI API 인증은 서버의 `~/.oci/config` 와 API key 또는 Instance Principa
 ### `config/autostop_compartment_exception.txt`에서 확인할 항목
 
 - 제외할 compartment OCID 또는 exact name을 한 줄씩 기록한다.
-- 해당 compartment 본인과 하위 subtree 전체가 AutoStop 대상에서 제외된다.
+- 현재 실행 범위의 `ACTIVE` compartment 목록과 일치하는 항목만 예외로 적용한다.
+- 일치한 compartment 본인과 하위 subtree 전체가 AutoStop 대상에서 제외된다.
+- 삭제되었거나 현재 `ACTIVE` 목록에 없는 항목은 경고 로그를 남기고 무시하므로 다른 정상 compartment의 작업은 계속된다.
+- exact name이 둘 이상과 일치하면 잘못된 예외 적용을 방지하기 위해 실행을 중단한다.
+- 최초 `ACTIVE` compartment 목록 조회 자체가 실패하면 안전을 위해 실행을 중단한다.
 - 환경마다 compartment 구조가 다르므로 다른 서버에 배포할 때는 이 파일을 그대로 복사해 쓰지 말고 반드시 재검토해야 한다.
 
 ### 최초 배포 권장 절차
@@ -170,7 +174,10 @@ OCI API 인증은 서버의 `~/.oci/config` 와 API key 또는 Instance Principa
 예외 파일은 `config/autostop_compartment_exception.txt` 이며 주석과 빈 줄을 허용한다.
 
 - 각 줄에는 compartment OCID 또는 exact compartment name 하나를 기록한다.
-- 해당 compartment 본인과 하위 subtree 전체가 실행 대상에서 제외된다.
+- 현재 실행 범위에서 조회된 `ACTIVE` compartment와 일치하는 항목의 본인 및 하위 subtree 전체가 실행 대상에서 제외된다.
+- 삭제되었거나 목록에서 사라진 항목은 `WARNING`을 기록하고 무시한다. 이 항목 때문에 다른 정상 compartment의 AutoStop 작업이 중단되지는 않는다.
+- exact name이 중복되면 모호한 예외 적용을 피하기 위해 실행을 중단한다.
+- 예외 비교의 기준이 되는 전체 `ACTIVE` compartment 조회가 실패하면 실행을 중단한다.
 - root compartment를 exception 파일에 넣는 사용 방식은 전제하지 않는다.
 
 ## 실행
@@ -343,3 +350,4 @@ python3 -m unittest discover -s tests -v
 - prod에서 region discovery가 실패하면 `oci.regions` 값을 fallback으로 사용한다.
 - 운영상 제외가 필요한 region은 `oci.excluded_regions` 에 명시한다.
 - 현재 로그는 `logs/autostop_daily.log` 를 하루 단위 덮어쓰기 방식으로 관리하는 운영을 권장한다.
+
