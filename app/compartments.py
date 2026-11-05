@@ -1,3 +1,4 @@
+Attempting to perform the InitializeDefaultDrives operation on the 'FileSystem' provider failed.
 from __future__ import annotations
 
 import logging
@@ -162,7 +163,28 @@ def resolve_exception_compartments(
         raise FileNotFoundError(f"Exception file not found: {settings.scope.exception_file}")
 
     excluded: set[str] = set()
+    deleted_compartment_ids: set[str] | None = None
     for entry in entries:
+        if entry.startswith("ocid1.compartment") and entry not in current_scope:
+            if deleted_compartment_ids is None:
+                response = call_with_retry(
+                    lambda: list_call_get_all_results(
+                        identity_client.list_compartments,
+                        compartment_id=tenancy_ocid,
+                        compartment_id_in_subtree=True,
+                        access_level="ANY",
+                        lifecycle_state="DELETED",
+                    ),
+                    settings.retry,
+                    logger,
+                    "list_deleted_exception_compartments",
+                )
+                deleted_compartment_ids = {item.id for item in response.data}
+
+            if entry in deleted_compartment_ids:
+                logger.warning("Skipping deleted exception compartment: %s", entry)
+                continue
+
         compartment = resolve_compartment_entry(identity_client, tenancy_ocid, entry, settings.retry, logger, current_scope)
         excluded.add(compartment.id)
         for child in list_subtree_compartments(identity_client, compartment.id, tenancy_ocid, settings.retry, logger):
@@ -188,6 +210,11 @@ def resolve_compartment_entry(
             f"get_exception_compartment:{entry}",
         )
         data = response.data
+        if data.lifecycle_state != "ACTIVE":
+            raise ValueError(
+                "Exception compartment must be ACTIVE: "
+                f"id={data.id}, lifecycle_state={data.lifecycle_state}"
+            )
         return CompartmentInfo(id=data.id, name=data.name, parent_id=data.compartment_id)
 
     matches = [item for item in current_scope.values() if item.name == entry]
@@ -213,3 +240,4 @@ def resolve_compartment_entry(
         raise ValueError(f"Exception compartment entry must resolve to exactly one compartment: {entry}")
     item = all_matches[0]
     return CompartmentInfo(id=item.id, name=item.name, parent_id=item.compartment_id)
+
